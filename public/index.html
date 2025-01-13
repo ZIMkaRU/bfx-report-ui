@@ -19,11 +19,194 @@
     <meta name="twitter:title" content="Bitfinex Reporting & Performance Tools" />
     <meta name="twitter:description" content="Manage risk, money & strategies with our state-of-the-art pro reporting tools" />
     <meta name="twitter:image" content="https://report.bitfinex.com/report-thumbnail-2.png">
+
+    <style>
+      :root {
+        --fallback-title-bar-height: 40px;
+      }
+
+      #electronMenu {
+        display: flex;
+        align-items: center;
+        position: relative;
+        top: 0;
+        right: 0;
+        width: 100%;
+        margin: auto;
+        min-height: env(titlebar-area-height, var(--fallback-title-bar-height));
+      }
+
+      .disabled {
+        pointer-events: none;
+        opacity: 0.6;
+      }
+
+      .invisible {
+        display: none;
+      }
+
+      .electron-menu-opt {
+        -webkit-app-region: no-drag;
+        cursor: pointer;
+        background-color: #172d3e;
+        width: fit-content;
+        padding: 2px 2px;
+        margin: 2px 0;
+      }
+
+      .electron-menu-submenu {
+        background-color: #0b1923;
+        padding: 5px;
+        margin: 1px;
+      }
+
+      .electron-menu-title {
+        font-size: 10px;
+        display: inline-flex;
+        list-style-type: none;
+        margin: auto;
+        padding: 0;
+        font-size: 12px;
+      }
+
+      .electron-menu-root-item {
+        font-size: 10px;
+        display: inline-flex;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .electron-menu-item {
+        padding-inline-start: 10px;
+        list-style-type: none;
+      }
+
+      .electron-menu-accelerator {
+        font-size: 8px;
+        padding-left: 5px;
+        color: #808b93;
+      }
+
+      .electron-menu-separator {
+        height: 1px;
+        list-style: none;
+        background-color: #172d3e;
+        margin: 3px 0;
+      }
+
+      #electronMenu {
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-app-region: drag;
+      }
+    </style>
   </head>
   <body class="theme-dark">
     <noscript>
       You need to enable JavaScript to run this app.
     </noscript>
+    <div id="electronMenu"></div>
     <div id="root"></div>
   </body>
+
+  <script>
+    window.document.addEventListener('electronLoad', async () => {
+      try {
+        const menuElem = document.getElementById('electronMenu')
+        const title = await window.bfxReportElectronApi
+          .getTitle()
+        const {
+          menuTemplate,
+          shouldMenuBeHidden
+        } = await window.bfxReportElectronApi
+          .getMenuTemplate()
+        console.log('[---title---]:', title)
+        console.log('[---menuTemplate---]:', menuTemplate)
+
+        const hideMenu = (args) => {
+          if (args?.state) {
+            menuElem.style.display = 'none';
+
+            return
+          }
+
+          menuElem.style.display = 'flex';
+        }
+
+        const renderMenuItem = (items, opts) => {
+          const { isNotRoot } = opts ?? {}
+          const titleHtml = isNotRoot
+            ? ''
+            : `<div class="electron-menu-title">${title}</div>`
+
+          if (
+            !Array.isArray(items) ||
+            items.length === 0
+          ) {
+            return titleHtml
+          }
+
+          const htmlItems = []
+          for (const item of items) {
+            const {
+              label,
+              id,
+              type,
+              accelerator,
+              enabled,
+              visible,
+              submenu
+            } = item ?? {}
+
+            if (type === 'separator') {
+              htmlItems.push('<li class="electron-menu-separator"></li>')
+  
+              continue
+            }
+
+            htmlItems.push(`<li
+                ${id ? 'data-id="' + id + '"' : ''}"
+                class="\
+${enabled ? '' : 'disabled'}\
+${visible ? '' : ' invisible'}\
+${Array.isArray(submenu) ? ' electron-menu-submenu' : ' electron-menu-opt'}"
+              >
+                ${label}${accelerator ? '<small class="electron-menu-accelerator">' + accelerator + '</small>' : ''}
+                ${Array.isArray(submenu) ? renderMenuItem(submenu, { isNotRoot: true }) : ''}
+              </li>`)
+          }
+
+          return `<ul class="${isNotRoot ? 'electron-menu-item' : "electron-menu-root-item"}">
+              ${htmlItems.join('\n')}
+            </ul>${titleHtml}`
+        }
+
+        window.bfxReportElectronApi?.onHideMenuEvent(hideMenu)
+        hideMenu({ state: shouldMenuBeHidden })
+        menuElem.innerHTML = renderMenuItem(menuTemplate)
+        const menuOpts = document.getElementsByClassName('electron-menu-opt')
+
+        for (const menuOpt of menuOpts) {
+          if (!menuOpt.dataset.id) {
+            continue
+          }
+
+          menuOpt.addEventListener('click', (e) => {
+            e.preventDefault()
+            console.log('[execMenuCmd-ID]:', e.currentTarget.dataset.id)
+            if (!e.currentTarget.dataset.id) return
+            window.bfxReportElectronApi
+              .execMenuCmd({ id: e.currentTarget.dataset.id })
+              .then(
+                () => { console.log('[execMenuCmd-OK]')},
+                (err) => { console.log('[execMenuCmd-ERR]:', err)}
+              )
+          }, false)
+        }
+      } catch (err) {
+        console.log('[---ERROR---]:', err)
+      }
+    })
+  </script>
 </html>
